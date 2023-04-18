@@ -139,15 +139,17 @@ def basic_coverage(issns, returns, year):
     print('Number of unique issns returned: ', unique_issn_returns)
     unique_eissn_returns = len(returns['journal.eissn'].unique())
     print('Number of unique eissns returned: ', unique_eissn_returns)
+    returns = returns.drop_duplicates()
     all_issn = list(set(returns['journal.issn'].unique().tolist() +
                         returns['journal.eissn'].unique().tolist()))
+    is_in_dim = issns[issns["issn_ojs"].isin(all_issn)]
     print('Number of unique issn+eissns: ', len(all_issn))
-    print(round(100*(len(all_issn)/unique_issns), 2))
+    print(round(len(is_in_dim)/len(issns)*100, 2))
 
 
 def main():
     MY_PROJECT_ID = "dimensionspkp"
-    year = 2020
+    year = 2021
     client = bigquery.Client(project=MY_PROJECT_ID)
     dim_out = os.path.join('..',
                            'data',
@@ -171,7 +173,7 @@ def main():
 
     # Lets evaluate our cache here
     from_dim_issn = load_dimensions_returns(dim_issn_out_path)
-    basic_coverage(issns_to_query, from_dim_issn, year)
+    basic_coverage(raw_data, from_dim_issn, year)
 
 
     #all_pubs_from_issn = pd.read_csv(file_path,
