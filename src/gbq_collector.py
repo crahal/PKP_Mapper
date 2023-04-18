@@ -128,7 +128,7 @@ def load_dimensions_returns(path):
                       )
 
 def basic_coverage(issns, returns, year):
-    print('Length of 2020 ISSNs from the OJS: ',
+    print(f'Length of {year} ISSNs from the OJS: ',
           len(issns))
     unique_issns = len(issns)
     print(f'Length of unique {year} ISSNs from OJS: ',
@@ -142,12 +142,12 @@ def basic_coverage(issns, returns, year):
     all_issn = list(set(returns['journal.issn'].unique().tolist() +
                         returns['journal.eissn'].unique().tolist()))
     print('Number of unique issn+eissns: ', len(all_issn))
-    print(round(100*len(all_issn)/unique_issns, 2))
+    print(round(100*(len(all_issn)/unique_issns), 2))
 
 
 def main():
     MY_PROJECT_ID = "dimensionspkp"
-    year = 2021
+    year = 2020
     client = bigquery.Client(project=MY_PROJECT_ID)
     dim_out = os.path.join('..',
                            'data',
@@ -160,7 +160,7 @@ def main():
     raw_path = os.path.join("..", "data", "raw")
     raw_data = load_issns(os.path.join(raw_path,
                                        'issn_inputs'),
-                          2021)
+                          year)
     issns_to_query = raw_data["issn_ojs"].tolist()
     if os.path.exists(dim_issn_out_path) is False:
         get_all_data(number_issns,
@@ -170,8 +170,8 @@ def main():
                      'issn')
 
     # Lets evaluate our cache here
-    from_dim_issn_2021 = load_dimensions_returns(dim_issn_out_path)
-    basic_coverage(issns_to_query, from_dim_issn_2021, 2021)
+    from_dim_issn = load_dimensions_returns(dim_issn_out_path)
+    basic_coverage(issns_to_query, from_dim_issn, year)
 
 
     #all_pubs_from_issn = pd.read_csv(file_path,
