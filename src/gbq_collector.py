@@ -17,6 +17,14 @@ def load_issns(path, year):
                                     f'full_ojs_issn_list_{year}.csv'))
 
 
+def get_raw_doi_list(raw_path):
+    doi_path = os.path.join(raw_path, 'dois')
+    doi_file = os.path.join(os.path.join(doi_path, 'ojs-DOIs-2022-12-01.txt'))
+    doi_df = pd.read_csv(doi_file, header=None, names=['doi'])
+    doi_list = doi_df['doi'].tolist()
+    return doi_list
+
+
 def save_file(results, file_path):
     """ Helper function to save/append results"""
     if os.path.exists(file_path) is False:
@@ -45,16 +53,13 @@ def get_data_from_lists(query_list, client, query_type):
     try:
         if query_type == 'issn':
             QUERY = """
-                    SELECT id, title.preferred, doi, journal.issn, journal.eissn,
-                    type, date_normal, category_for,
-                    citations_count, research_org_cities,
-                    research_org_country_names,
-                    altmetrics, reference_ids,
-                    citations
+                    SELECT id, reference_ids, citations, doi, journal.issn,
+                    journal.eissn, type, date_normal, category_for, metrics,
+                    research_orgs, researcher_ids, journal, research_org_country_names,
+                    altmetrics, title, abstract, concepts, funder_orgs
                     FROM `dimensions-ai.data_analytics.publications`
-                    WHERE type='article' AND ( journal.issn IN UNNEST(%s) OR journal.eissn IN UNNEST(%s) )""" %(query_list, query_list)
+                    WHERE type='article' AND (journal.issn IN UNNEST(%s) OR journal.eissn IN UNNEST(%s))""" %(query_list, query_list)
             query_job = client.query(QUERY)
-
         elif query_type == 'article':
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
@@ -62,15 +67,29 @@ def get_data_from_lists(query_list, client, query_type):
                 ]
             )
             QUERY = """
-                    SELECT id, title.preferred, doi, journal.issn, journal.eissn,
-                    type, date_normal, category_for,
-                    citations_count, research_org_cities,
-                    research_org_country_names,
-                    altmetrics, reference_ids,
-                    citations
+                    SELECT id, reference_ids, citations, doi, journal.issn,
+                    journal.eissn, type, date_normal, category_for, metrics,
+                    research_orgs, researcher_ids, journal, research_org_country_names,
+                    altmetrics, title, abstract, concepts, funder_orgs
                     FROM `dimensions-ai.data_analytics.publications` p
                     WHERE type='article' AND p.id IN UNNEST(@pubids)""" %(query_list)
             query_job = client.query(QUERY, job_config=job_config)
+#        elif query_type == 'doi':
+#            job_config = bigquery.QueryJobConfig(
+#                query_parameters=[
+#                    bigquery.ArrayQueryParameter("doi", "STRING", query_list),
+#                ]
+#            )
+#            QUERY = """
+#                    SELECT id, title.preferred, doi, journal.issn, journal.eissn,
+#                    type, date_normal, category_for,
+#                    citations_count, research_org_cities,
+#                    research_org_country_names,
+#                    altmetrics, reference_ids,
+#                    citations
+#                    FROM `dimensions-ai.data_analytics.publications` p
+#                    WHERE type='article' AND p.doi IN UNNEST(@doi)""" %(query_list)
+#           query_job = client.query(QUERY, job_config=job_config)
         rows = query_job.result()
         return rows
     except Exception as e:
@@ -120,12 +139,13 @@ def get_all_citations(df):
                 all_citations.append(x['id'])
     return list(set(all_citations))
 
+
 def load_dimensions_returns(path):
     return pd.read_csv(path,
                        index_col=0,
                        names=article_headers,
-                       low_memory=False
-                      )
+                       low_memory=False)
+
 
 def basic_coverage(issns, returns, year):
     print(f'Length of {year} ISSNs from the OJS: ',
@@ -147,49 +167,61 @@ def basic_coverage(issns, returns, year):
     print(round(len(is_in_dim)/len(issns)*100, 2))
 
 
-def main():
-    MY_PROJECT_ID = "dimensionspkp"
-    year = 2021
-    client = bigquery.Client(project=MY_PROJECT_ID)
-    dim_out = os.path.join('..',
-                           'data',
-                           'raw',
-                           'from_dimensions',
-                           str(year))
-    file_name = 'pubs_from_all_issns.csv'
-    dim_issn_out_path = os.path.join(dim_out, file_name)
-    number_issns = 4000 # hardcoded to circumvent limits: why needed?
-    raw_path = os.path.join("..", "data", "raw")
-    raw_data = load_issns(os.path.join(raw_path,
-                                       'issn_inputs'),
-                          year)
-    issns_to_query = raw_data["issn_ojs"].tolist()
-    if os.path.exists(dim_issn_out_path) is False:
-        get_all_data(number_issns,
-                     dim_issn_out_path,
-                     client,
-                     issns_to_query,
-                     'issn')
-
-
+def get_refs_and_cites(dim_out, client):
     all_pubs_from_issn = pd.read_csv(dim_issn_out_path,
-                                     usecols=[1, 13, 14],
+                                     usecols=[1, 2, 3],
                                      names=['id',
                                             'reference_ids',
                                             'citations'])
-
     print('Total number of papers', len(all_pubs_from_issn))
     all_refs = get_all_refs(all_pubs_from_issn)
     print('Total references to query: ', len(all_refs))
     all_citations = get_all_citations(all_pubs_from_issn)
     print('Total citations to query: ', len(all_citations))
     file_name = 'references_of_all_pubs.csv'
+
     file_path = os.path.join(dim_out, file_name)
     num_pubids = 300000 # hardcoded to circumvent limits
     get_all_data(num_pubids, file_path, client, all_refs, 'article')
     file_name = 'citations_of_all_pubs.csv'
     file_path = os.path.join(dim_out, file_name)
     get_all_data(num_pubids, file_path, client, all_citations, 'article')
+
+
+def main():
+    MY_PROJECT_ID = "dimensionspkp"
+    year = 2023
+    print('Initializing GBQ')
+    client = bigquery.Client(project=MY_PROJECT_ID)
+    issn_out = os.path.join('..',
+                            'data',
+                            'raw',
+                            'from_dimensions',
+                            'issn',
+                            str(year))
+    doi_out = os.path.join('..',
+                           'data',
+                           'raw',
+                           'from_dimensions',
+                           'doi'
+                           )
+    issn_file_name = 'pubs_from_all_issns.csv'
+    dim_issn_out_path = os.path.join(issn_out, issn_file_name)
+    number_issns = 4000 # hardcoded to circumvent limits: why needed?
+    raw_path = os.path.join("..", "data", "raw")
+    print('Loading raw ISSN data')
+    raw_issn = load_issns(os.path.join(raw_path,
+                                       'issn_inputs'),
+                          year)
+    issns_to_query = raw_issn["issn_ojs"].tolist()
+    # Get all ISSN data here
+    if os.path.exists(dim_issn_out_path) is False:
+        get_all_data(number_issns,
+                     dim_issn_out_path,
+                      client,
+                      issns_to_query,
+                      'issn')
+    get_refs_and_cites()
 
 
 if __name__ == '__main__':
