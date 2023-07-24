@@ -3,6 +3,7 @@ import re
 import ast
 import traceback
 import pandas as pd
+from tqdm import tqdm
 from google.cloud import bigquery
 
 article_headers = ['id', 'title.preferred', 'doi', 'journal.issn',
@@ -74,22 +75,6 @@ def get_data_from_lists(query_list, client, query_type):
                     FROM `dimensions-ai.data_analytics.publications` p
                     WHERE type='article' AND p.id IN UNNEST(@pubids)""" %(query_list)
             query_job = client.query(QUERY, job_config=job_config)
-#        elif query_type == 'doi':
-#            job_config = bigquery.QueryJobConfig(
-#                query_parameters=[
-#                    bigquery.ArrayQueryParameter("doi", "STRING", query_list),
-#                ]
-#            )
-#            QUERY = """
-#                    SELECT id, title.preferred, doi, journal.issn, journal.eissn,
-#                    type, date_normal, category_for,
-#                    citations_count, research_org_cities,
-#                    research_org_country_names,
-#                    altmetrics, reference_ids,
-#                    citations
-#                    FROM `dimensions-ai.data_analytics.publications` p
-#                    WHERE type='article' AND p.doi IN UNNEST(@doi)""" %(query_list)
-#           query_job = client.query(QUERY, job_config=job_config)
         rows = query_job.result()
         return rows
     except Exception as e:
@@ -100,7 +85,7 @@ def get_all_data(chunk_size, file_path, client, query_list, query_type):
     """ Helper function to get all data from iterative queries"""
     if chunk_size < len(query_list):
         print(f'We have {len(query_list)} {query_type}s with chunksize {chunk_size}')
-        for chunk in chunker(query_list, chunk_size):
+        for chunk in tqdm(chunker(query_list, chunk_size)):
             results = get_data_from_lists(chunk,
                                           client,
                                           query_type).to_dataframe()
@@ -167,8 +152,8 @@ def basic_coverage(issns, returns, year):
     print(round(len(is_in_dim)/len(issns)*100, 2))
 
 
-def get_refs_and_cites(dim_out, client):
-    all_pubs_from_issn = pd.read_csv(dim_issn_out_path,
+def get_refs_and_cites(issn_out, client):
+    all_pubs_from_issn = pd.read_csv(os.path.join(issn_out, 'pubs_from_all_issns.csv'),
                                      usecols=[1, 2, 3],
                                      names=['id',
                                             'reference_ids',
@@ -180,11 +165,11 @@ def get_refs_and_cites(dim_out, client):
     print('Total citations to query: ', len(all_citations))
     file_name = 'references_of_all_pubs.csv'
 
-    file_path = os.path.join(dim_out, file_name)
-    num_pubids = 300000 # hardcoded to circumvent limits
+    file_path = os.path.join(issn_out, file_name)
+    num_pubids = 333000 # hardcoded to circumvent limits
     get_all_data(num_pubids, file_path, client, all_refs, 'article')
     file_name = 'citations_of_all_pubs.csv'
-    file_path = os.path.join(dim_out, file_name)
+    file_path = os.path.join(issn_out, file_name)
     get_all_data(num_pubids, file_path, client, all_citations, 'article')
 
 
@@ -221,7 +206,7 @@ def main():
                       client,
                       issns_to_query,
                       'issn')
-    get_refs_and_cites()
+    get_refs_and_cites(issn_out, client)
 
 
 if __name__ == '__main__':
