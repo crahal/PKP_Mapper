@@ -6,11 +6,11 @@ import pandas as pd
 from tqdm import tqdm
 from google.cloud import bigquery
 
-article_headers = ['id', 'title.preferred', 'doi', 'journal.issn',
-                   'journal.eissn', 'type', 'date_normal',
-                   'category_for', 'citations_count', 'research_org_cities',
-                   'research_org_country_names', 'altmetrics',
-                   'reference_ids', 'citations']
+#article_headers = ['id', 'title.preferred', 'doi', 'journal.issn',
+#                   'journal.eissn', 'type', 'date_normal',
+#                   'category_for', 'citations_count', 'research_org_cities',
+#                   'research_org_country_names', 'altmetrics',
+#                   'reference_ids', 'citations']
 
 
 def load_issns(path, year):
@@ -125,11 +125,11 @@ def get_all_citations(df):
     return list(set(all_citations))
 
 
-def load_dimensions_returns(path):
-    return pd.read_csv(path,
-                       index_col=0,
-                       names=article_headers,
-                       low_memory=False)
+#def load_dimensions_returns(path):
+#    return pd.read_csv(path,
+#                   index_col=0,
+#                       names=article_headers,
+#                       low_memory=False)
 
 
 def basic_coverage(issns, returns, year):
@@ -166,7 +166,7 @@ def get_refs_and_cites(issn_out, client):
     file_name = 'references_of_all_pubs.csv'
 
     file_path = os.path.join(issn_out, file_name)
-    num_pubids = 333000 # hardcoded to circumvent limits
+    num_pubids = 225000 # hardcoded to circumvent limits
     get_all_data(num_pubids, file_path, client, all_refs, 'article')
     file_name = 'citations_of_all_pubs.csv'
     file_path = os.path.join(issn_out, file_name)
@@ -174,8 +174,8 @@ def get_refs_and_cites(issn_out, client):
 
 
 def main():
-    MY_PROJECT_ID = "dimensionspkp"
-    year = 2023
+    MY_PROJECT_ID = "dimensionsv3"
+    year = 2022
     print('Initializing GBQ')
     client = bigquery.Client(project=MY_PROJECT_ID)
     issn_out = os.path.join('..',
@@ -192,7 +192,7 @@ def main():
                            )
     issn_file_name = 'pubs_from_all_issns.csv'
     dim_issn_out_path = os.path.join(issn_out, issn_file_name)
-    number_issns = 4000 # hardcoded to circumvent limits: why needed?
+    number_issns = 3000 # hardcoded to circumvent limits: why needed?
     raw_path = os.path.join("..", "data", "raw")
     print('Loading raw ISSN data')
     raw_issn = load_issns(os.path.join(raw_path,
