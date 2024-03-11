@@ -110,15 +110,15 @@ def main():
                 try:
                     prism_issn = results_title[0]['prism:issn']
                 except KeyError:
-                    prism_issn = 'No prime:issn data'
+                    prism_issn = 'No prism:issn data'
                 try:
                     prism_eissn = results_title[0]['prism:eIssn']
                 except KeyError:
-                    prism_eissn = 'No prime:eIssn data'
+                    prism_eissn = 'No prism:eIssn data'
                 try:
                     dc_title = results_title[0]['dc:title']
                 except KeyError:
-                    dc_title = results_title[0]['dc:title']
+                    dc_title = 'No dc:title data'
             else:
                 prism_issn = 'More than 1 return'
                 prism_eissn = 'More than 1 return'
