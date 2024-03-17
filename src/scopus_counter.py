@@ -3,8 +3,9 @@ import csv
 import requests
 import numpy as np
 import pandas as pd
-from ratelimit import limits
 from tqdm import tqdm
+from ratelimit import limits
+from requests.exceptions import JSONDecodeError
 
 
 @limits(calls=8, period=1)  # max of 8 requests per 1 second
@@ -92,47 +93,69 @@ def main():
     for issn in tqdm(issn_list):
         url_search = base_url + f'search/scopus?query=issn({issn})'
         url_title = base_url + f'serial/title/issn/{issn}'
-        api_return_search = call_scopus_search_api(url_search, keys[key_counter])
-        api_return_title = call_scopus_search_api(url_title, keys[key_counter])
-        results_search = api_return_search.json()['search-results']
-        if 'service-error' in api_return_title.json():
-            if api_return_title.json()['service-error']['status']['statusCode'] == 'RESOURCE_NOT_FOUND':
-                prism_issn = 'Resource Not Found'
-                prism_eissn = 'Resource Not Found'
-                dc_title = 'Resource Not Found'
+        returned = False
+        while returned is False:
+            api_return_search = call_scopus_search_api(url_search, keys[key_counter])
+            api_return_title = call_scopus_search_api(url_title, keys[key_counter])
+            if (int(api_return_search.headers.get('X-RateLimit-Remaining')) == 0) or \
+                (int(api_return_title.headers.get('X-RateLimit-Remaining')) == 0):
+                key_counter += 1
+            if api_return_search.status_code == 200:
+                returned = True
             else:
-                prism_issn = 'Other Service Error'
-                prism_eissn = 'Other Service Error'
-                dc_title = 'Other Service Error'
-        else:
-            results_title = api_return_title.json()['serial-metadata-response']['entry']
-            if len(results_title) == 1:
-                try:
-                    prism_issn = results_title[0]['prism:issn']
-                except KeyError:
-                    prism_issn = 'No prism:issn data'
-                try:
-                    prism_eissn = results_title[0]['prism:eIssn']
-                except KeyError:
-                    prism_eissn = 'No prism:eIssn data'
-                try:
-                    dc_title = results_title[0]['dc:title']
-                except KeyError:
-                    dc_title = 'No dc:title data'
-            else:
-                prism_issn = 'More than 1 return'
-                prism_eissn = 'More than 1 return'
-                dc_title = 'More than 1 return'
+                print('Problem with API call.')
+                print(f"Rate limits remaining: {api_return_search.headers.get('X-RateLimit-Remaining')},"
+                      f" {api_return_title.headers.get('X-RateLimit-Remaining')}")
+                print(f"API status codes: {api_return_search.status_code}, {api_return_search.status_code}")
+                print(f'Key counter is: {key_counter}')
         try:
-            article_count = int(results_search['opensearch:totalResults'])
-        except KeyError:
+            if 'service-error' in api_return_title.json():
+                if api_return_title.json()['service-error']['status']['statusCode'] == 'RESOURCE_NOT_FOUND':
+                    prism_issn = 'Resource Not Found'
+                    prism_eissn = 'Resource Not Found'
+                    dc_title = 'Resource Not Found'
+                else:
+                    prism_issn = 'Other Service Error'
+                    prism_eissn = 'Other Service Error'
+                    dc_title = 'Other Service Error'
+            else:
+                results_title = api_return_title.json()['serial-metadata-response']['entry']
+                if len(results_title) == 1:
+                    try:
+                        prism_issn = results_title[0]['prism:issn']
+                    except KeyError:
+                        prism_issn = 'No prism:issn data'
+                    try:
+                        prism_eissn = results_title[0]['prism:eIssn']
+                    except KeyError:
+                        prism_eissn = 'No prism:eIssn data'
+                    try:
+                        dc_title = results_title[0]['dc:title']
+                    except KeyError:
+                        dc_title = 'No dc:title data'
+                else:
+                    prism_issn = 'More than 1 return'
+                    prism_eissn = 'More than 1 return'
+                    dc_title = 'More than 1 return'
+        except (KeyError, JSONDecodeError, requests.exceptions.RequestException):
+            prism_issn = 'Malformed json return'
+            prism_eissn = 'Malformed json return'
+            dc_title = 'Malformed json return'
+        try:
+            if 'search-results' in api_return_search.json().keys():
+                results_search = api_return_search.json()['search-results']
+                article_count = int(results_search['opensearch:totalResults'])
+            else:
+                article_count = np.nan
+        except (KeyError, JSONDecodeError, requests.exceptions.RequestException):
             article_count = np.nan
-        if (api_return_search.headers.get('X-RateLimit-Remaining') == 0) or \
-                (api_return_title.headers.get('X-RateLimit-Remaining') == 0):
-            key_counter += 1
         with open(csv_file_path, 'a', newline='') as csv_file:
             csv_writer = csv.writer(csv_file)
-            csv_writer.writerow([issn, article_count, prism_issn, prism_eissn, dc_title])
+            csv_writer.writerow([issn,
+                                 article_count,
+                                 prism_issn,
+                                 prism_eissn,
+                                 dc_title])
 
 
 if __name__ == '__main__':
